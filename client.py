@@ -1,6 +1,3 @@
-# 
-
-
 import socket
 import os
 import hashlib
@@ -34,31 +31,42 @@ class Client:
                         break
                     self.client_socket.send(chunk)
 
-            # Receive file chunks (sent back by the server) and reassemble file
+            # Reassemble file chunks sent back by the server.
             received_data = b""
             while True:
-                # Read the header for each chunk
+                # Read the header for each chunk.
                 header = self.client_socket.recv(1024).decode().strip()
-                if not header:
-                    break  # No more data
+                if header == "END":
+                    break  # End marker received.
                 parts = header.split("|")
-                if len(parts) != 3:
-                    break  # Improper header; assume end of chunks
-                # Unpack header parts (client_id, seq_num, chunk_size)
-                _, _, chunk_size = parts
-                # Read the specified chunk of data
-                chunk = self.client_socket.recv(int(chunk_size))
-                received_data += chunk
+                if len(parts) != 4:
+                    break  # Improper header; assume end of chunks.
+                # Unpack header parts: client_id, sequence number, chunk length, and expected chunk checksum.
+                _, seq_num, chunk_length, expected_chunk_checksum = parts
+                chunk_length = int(chunk_length)
+                # Receive the specified chunk of data.
+                chunk = self.client_socket.recv(chunk_length)
+                # Compute the checksum of the received chunk.
+                actual_chunk_checksum = hashlib.sha256(chunk).hexdigest()
+                if actual_chunk_checksum == expected_chunk_checksum:
+                    # If valid, send OK and append the chunk.
+                    self.client_socket.send("OK".encode())
+                    received_data += chunk
+                else:
+                    # If corrupted, request retransmission.
+                    print(f"Chunk {seq_num} corrupted. Requesting retransmission.")
+                    self.client_socket.send("RESEND".encode())
+                    # Do not append; the server will resend the same chunk.
 
-            # Receive checksum from server
-            checksum = self.client_socket.recv(1024).decode().strip()
+            # Receive the overall checksum from the server.
+            overall_checksum = self.client_socket.recv(1024).decode().strip()
 
-            # Verify checksum
+            # Verify the overall checksum.
             computed_checksum = hashlib.sha256(received_data).hexdigest()
-            if computed_checksum == checksum:
-                print(f"File transfer successful. Checksum verified: {checksum}")
+            if computed_checksum == overall_checksum:
+                print(f"File transfer successful. Checksum verified: {overall_checksum}")
             else:
-                print(f"Checksum mismatch. Expected: {checksum}, Computed: {computed_checksum}")
+                print(f"Checksum mismatch. Expected: {overall_checksum}, Computed: {computed_checksum}")
 
         except Exception as e:
             print(f"Error: {e}")

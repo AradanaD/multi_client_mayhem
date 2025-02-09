@@ -6,7 +6,6 @@ import time
 import os
 import sys
 
-# Add the parent directory (project root) to sys.path so that client and utils can be imported
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from client import Client
